@@ -1,59 +1,61 @@
-import os
 import requests
-import datetime
+import json
+import os
+from datetime import datetime
 
-# Obtenemos el token desde las variables de entorno de Jenkins
-github_token = os.getenv('GITHUB_TOKEN')
+# Configuration
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # Set this as an environment variable
+GITHUB_REPO = "your-username/your-repo"
 
-# Configuración del repositorio
-repo_owner = 'msidliare'  # Cambia por tu nombre de usuario de GitHub
-repo_name = 'Random_C'  # Cambia por el nombre de tu repositorio
-release_url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/releases'
+# Generate dynamic release tag and name based on date/time
+current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+RELEASE_TAG = f"v{current_time}"
+RELEASE_NAME = f"Version {current_time}"
+RELEASE_BODY = "Automated release with timestamp."
+FILE_PATH = "path/to/your/compiled-file.zip"  # Update with your actual file path
 
-# Obtener la fecha y hora actual para el nombre del tag y release
-current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-tag_name = f'v{current_time}'  # Formato: vYYYY-MM-DD_HH-MM-SS
-release_name = f'Release {current_time}'
+# GitHub API URL
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 
-# Ruta al archivo ejecutable generado
-executable_file_path = './random_c_program'  # Asegúrate de que la ruta sea correcta
-
-# Crear la release en GitHub
+# Headers
 headers = {
-    'Authorization': f'token {github_token}',
-    'Accept': 'application/vnd.github.v3+json'
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
 }
 
-# Datos para crear la release
+# Release data
 release_data = {
-    'tag_name': tag_name,
-    'name': release_name,
-    'body': f'Release generada automáticamente el {current_time}',
-    'draft': False,  # No será un borrador
-    'prerelease': False  # No es una prerelease
+    "tag_name": RELEASE_TAG,
+    "name": RELEASE_NAME,
+    "body": RELEASE_BODY,
+    "draft": False,
+    "prerelease": False
 }
 
-response = requests.post(release_url, json=release_data, headers=headers)
-release_info = response.json()
+# Create the release
+response = requests.post(GITHUB_API_URL, headers=headers, data=json.dumps(release_data))
 
 if response.status_code == 201:
-    print(f'Release creada correctamente: {release_info["html_url"]}')
-    upload_url = release_info['upload_url'].split('{')[0]  # URL para subir archivos
+    print("Release published successfully!")
+    release_id = response.json()["id"]
+    upload_url = response.json()["upload_url"].split("{?name,label}")[0]
 
-    # Subir el ejecutable a la release
-    with open(executable_file_path, 'rb') as file:
-        files = {
-            'file': ('random_c_program', file, 'application/octet-stream')
+    # Upload the compiled file
+    with open(FILE_PATH, "rb") as file:
+        file_name = os.path.basename(FILE_PATH)
+        upload_headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Content-Type": "application/octet-stream"
         }
         upload_response = requests.post(
-            upload_url + f'?name=random_c_program&label={tag_name}',
-            headers={'Authorization': f'token {github_token}'},
-            files=files
+            f"{upload_url}?name={file_name}", headers=upload_headers, data=file
         )
 
-    if upload_response.status_code == 201:
-        print('Archivo subido correctamente a la release.')
-    else:
-        print(f'Error al subir el archivo: {upload_response.status_code}')
+        if upload_response.status_code == 201:
+            print("File uploaded successfully!")
+        else:
+            print("Failed to upload file.")
+            print(upload_response.json())
 else:
-    print(f'Error al crear la release: {response.status_code} - {response.text}')
+    print("Failed to publish release.")
+    print(response.json())
